@@ -16,6 +16,7 @@ build/
 # Data outputs (may contain PII)
 data/*.csv
 !data/sample_leads.csv
+data/cursor_draft_queue.md
 
 # OS / IDE
 .DS_Store

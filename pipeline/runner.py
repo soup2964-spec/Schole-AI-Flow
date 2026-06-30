@@ -1,13 +1,11 @@
-"""End-to-end pipeline orchestration."""
+"""Filter warm leads from Clay export — no auto email drafting."""
 
 from __future__ import annotations
 
-from pipeline.deliver import push_to_instantly
-from pipeline.export import save_leads
+from config import settings
+from pipeline.export import save_leads, save_leads_for_cursor
 from pipeline.intent import score_companies
 from pipeline.models import Lead
-from pipeline.personalize import draft_email
-from config import settings
 
 
 def filter_warm_leads(leads: list[Lead]) -> list[Lead]:
@@ -19,31 +17,22 @@ def filter_warm_leads(leads: list[Lead]) -> list[Lead]:
             continue
         if lead.intent.icp_score < settings.min_icp_score:
             continue
+        lead.status = "needs_draft"
         warm.append(lead)
     return warm[: settings.max_leads]
 
 
-def run_pipeline(
+def filter_from_clay(
     leads: list[Lead],
     *,
-    output_path: str,
-    dry_run: bool = True,
-    send: bool = False,
+    csv_output: str,
+    cursor_output: str,
 ) -> list[Lead]:
     if not leads:
         return []
 
-    score_companies(leads, dry_run=dry_run)
+    score_companies(leads)
     warm = filter_warm_leads(leads)
-
-    for lead in warm:
-        draft_email(lead, dry_run=dry_run)
-        lead.status = "ready" if send and not dry_run else "drafted"
-
-    if send and not dry_run:
-        result = push_to_instantly(warm, dry_run=False)
-        for lead in warm:
-            lead.status = f"sent:{result.get('status', 'ok')}"
-
-    save_leads(warm, output_path)
+    save_leads(warm, csv_output)
+    save_leads_for_cursor(warm, cursor_output)
     return warm

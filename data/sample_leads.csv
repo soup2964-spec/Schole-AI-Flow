@@ -1,6 +1,4 @@
-first_name,last_name,title,email,company_name,domain,linkedin_url,headcount,industry
-Sarah,Chen,VP Learning and Development,,Acme Retail Group,acmeretail.com,,2500,Retail
-James,Patel,CHRO,,NovaTech Software,novatech.io,,1200,Software
-Maria,Lopez,Head of AI Enablement,,Summit Financial,summitfinancial.com,,800,Financial Services
-David,Kim,Director People Development,,GreenHealth Systems,greenhealth.com,,3500,Healthcare
-Emily,Ross,Chief Learning Officer,,BrightOps Inc,brightops.com,,600,Operations
+first_name,last_name,title,email,company_name,domain,linkedin_url,headcount,industry,warm_intent,icp_score,intent_evidence
+Sarah,Chen,VP Learning and Development,sarah.chen@acmeretail.com,Acme Retail Group,acmeretail.com,,2500,Retail,true,82,Company-wide Copilot rollout announced Q1 2026
+James,Patel,CHRO,,NovaTech Software,novatech.io,,1200,Software,false,45,
+Maria,Lopez,Head of AI Enablement,maria.lopez@summitfinancial.com,Summit Financial,summitfinancial.com,,800,Financial Services,true,88,Hiring AI Enablement Lead (Greenhouse)

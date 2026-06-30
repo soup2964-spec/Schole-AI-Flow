@@ -1,101 +1,78 @@
 # Scholé AI Flow
 
-US-targeted lead generation engine for **Scholé** (AI upskilling / L&D). Finds VP L&D, CHRO, and AI-enablement decision-makers, filters to **warm-intent** companies (AI pilots, rollouts, hiring signals), drafts personalized outbound, and pushes to **Instantly**.
-
-Built as a Growth Engineer application artifact — same pattern as Sponsorfi (LLM scraper + lead scoring + outbound).
-
-## Flow
+Three tools. One flow.
 
 ```
-Find people (Clay UI or Apollo)
-  → warm-intent check (AI pilot / AI hiring)
-  → ICP score
-  → personalize email
-  → Instantly sequence
-  → HubSpot (manual / Clay HTTP column)
+Clay (get leads)  ->  Cursor (draft emails)  ->  Instantly (send)
 ```
 
-See `docs/` for the full Clay playbook and conceptual architecture.
+## Step 1 — Clay (get leads)
 
-## Quick start
+In Clay UI ([playbook](docs/clay-playbook.md)):
 
-```bash
+1. **Find People** — VP/Head L&D, CHRO, AI enablement leaders, US, 500+ employees
+2. **Claygent** — warm intent (AI pilot, AI hiring)
+3. **Filter** warm accounts only
+4. **Enrich emails**
+5. **Export CSV**
+
+Optional: push seed rows into Clay via webhook:
+
+```powershell
+python main.py push-clay --input seed.csv
+```
+
+## Step 2 — Cursor (draft emails)
+
+Filter warm leads and generate a Cursor brief:
+
+```powershell
+python main.py filter --input your_clay_export.csv
+```
+
+This creates:
+
+- `data/to_draft.csv` — empty `subject` / `body` columns
+- `data/cursor_draft_queue.md` — paste into **Cursor chat**
+
+In Cursor, say:
+
+> Draft a cold email for each lead in @data/cursor_draft_queue.md. Return CSV columns: email, subject, body. Scholé sells AI upskilling to L&D teams.
+
+Copy the drafted emails back into `data/to_draft.csv` (merge subject/body by email).
+
+See [docs/cursor-drafting.md](docs/cursor-drafting.md).
+
+## Step 3 — Instantly (send)
+
+Add to `.env`:
+
+```
+INSTANTLY_API_KEY=...
+INSTANTLY_CAMPAIGN_ID=...
+```
+
+Campaign template should use `{{subject}}` and `{{body}}` custom variables.
+
+```powershell
+python main.py send --input data/to_draft.csv
+```
+
+## Commands
+
+| Command | What |
+|---|---|
+| `verify-clay` | Test Clay API key |
+| `push-clay --input file.csv` | Push rows into Clay webhook |
+| `filter --input clay_export.csv` | Warm filter + Cursor draft queue |
+| `send --input to_draft.csv` | Push to Instantly |
+
+## Setup
+
+```powershell
 cd schole-leadgen
-python -m venv .venv
-.venv\Scripts\activate          # Windows
 pip install -r requirements.txt
-copy .env.example .env          # add your keys locally — never commit .env
+copy .env.example .env
 ```
 
-### Dry-run on sample data (no API keys)
-
-```bash
-python main.py run --input data/sample_leads.csv --output data/leads_qualified.csv
-```
-
-### Verify Clay API key
-
-```bash
-python main.py verify-clay
-```
-
-> Clay's API key works for **Enterprise enrich** lookups. "Find People" runs in the Clay UI — use `push-clay` to send rows into your table webhook, or export CSV from Clay and run the pipeline.
-
-### Source leads via Apollo
-
-```bash
-python main.py source-apollo --limit 50 --output data/leads_raw.csv
-python main.py run --input data/leads_raw.csv --live
-```
-
-### Push leads into Clay table (webhook)
-
-1. In Clay: create table → Add source → **Webhook** → copy URL into `.env` as `CLAY_WEBHOOK_URL`
-2. Run:
-
-```bash
-python main.py push-clay --input data/leads_raw.csv
-```
-
-### Send to Instantly (live)
-
-```bash
-python main.py run --input data/leads_qualified.csv --live --send
-```
-
-Configure your Instantly campaign to use `{{subject}}` and `{{body}}` custom variables.
-
-## Clay setup (recommended)
-
-1. **Find People** in Clay with US filters + L&D/CHRO titles (see `docs/clay-playbook.md`)
-2. Add **Claygent** columns for warm intent (AI pilot, AI hiring)
-3. Filter to warm accounts → enrich emails
-4. Add **AI column** for email copy (prompts in playbook)
-5. **HTTP API column** → Instantly, or export CSV and use this repo's `run` command
-
-## Project structure
-
-```
-main.py                 CLI entrypoint
-config.py               env settings
-pipeline/
-  apollo_source.py      Apollo people search
-  clay_client.py        Clay webhook + Enterprise API
-  csv_source.py         Import Clay/Apollo CSV exports
-  intent.py               Warm-intent + ICP scoring
-  personalize.py          Email drafting
-  deliver.py              Instantly push
-  runner.py               Orchestration
-docs/
-  clay-playbook.md        Step-by-step Clay build
-  conceptual-flow.md      Architecture + data model
-```
-
-## Security
-
-- **Never** paste API keys in chat or commit `.env`
-- Do not mass-send to Scholé prospects before you're hired — use dry-run + sample output for the application
-
-## License
-
-Private — personal job-search / demo project.
+No Apollo. No OpenAI API in this repo — email drafting happens in Cursor.

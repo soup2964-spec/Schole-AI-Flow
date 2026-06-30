@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Scholé AI Flow — US lead-gen pipeline for L&D / CHRO decision-makers."""
+"""
+Scholé AI Flow
+
+  1. Clay     — source + enrich + warm-intent (Clay UI, export CSV)
+  2. Cursor   — draft emails (paste data/cursor_draft_queue.md into chat)
+  3. Instantly — send (python main.py send)
+"""
 
 from __future__ import annotations
 
@@ -8,11 +14,10 @@ import asyncio
 import sys
 from pathlib import Path
 
-from pipeline.apollo_source import search_people
 from pipeline.clay_client import ClayClient, verify_sync
 from pipeline.csv_source import load_csv
-from pipeline.export import save_leads
-from pipeline.runner import run_pipeline
+from pipeline.runner import filter_from_clay
+from pipeline.send import send_to_instantly
 
 
 def cmd_verify_clay(_: argparse.Namespace) -> None:
@@ -23,13 +28,6 @@ def cmd_verify_clay(_: argparse.Namespace) -> None:
     else:
         print("Key rejected or plan lacks Enterprise API.")
         print(result["body"])
-
-
-def cmd_source_apollo(args: argparse.Namespace) -> None:
-    leads = search_people(per_page=args.limit, page=1)
-    out = Path(args.output)
-    save_leads(leads, out)
-    print(f"Saved {len(leads)} leads to {out}")
 
 
 def cmd_push_clay(args: argparse.Namespace) -> None:
@@ -51,44 +49,52 @@ def cmd_push_clay(args: argparse.Namespace) -> None:
     print(f"Pushed to Clay webhook: {result}")
 
 
-def cmd_run(args: argparse.Namespace) -> None:
-    if args.input:
-        leads = load_csv(args.input)
-    else:
-        leads = search_people(per_page=args.limit)
-
-    warm = run_pipeline(
+def cmd_filter(args: argparse.Namespace) -> None:
+    leads = load_csv(args.input)
+    warm = filter_from_clay(
         leads,
-        output_path=args.output,
-        dry_run=not args.live,
-        send=args.send,
+        csv_output=args.output,
+        cursor_output=args.cursor,
     )
-    print(f"Pipeline done: {len(warm)} warm leads → {args.output}")
+    print(f"Filtered {len(warm)} warm leads")
+    print(f"  CSV (fill subject/body after Cursor): {args.output}")
+    print(f"  Cursor brief: {args.cursor}")
+    if not warm and leads:
+        print(
+            "Tip: Clay export needs warm_intent / intent_ai_pilot / icp_score columns.",
+            file=sys.stderr,
+        )
+
+
+def cmd_send(args: argparse.Namespace) -> None:
+    leads = load_csv(args.input)
+    result = send_to_instantly(leads, output_path=args.output)
+    print(f"Sent {len(leads)} leads to Instantly")
+    print(f"  Result: {result}")
+    print(f"  Log: {args.output}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scholé AI Flow")
+    parser = argparse.ArgumentParser(description="Scholé AI Flow: Clay -> Cursor -> Instantly")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_verify = sub.add_parser("verify-clay", help="Test CLAY_API_KEY")
     p_verify.set_defaults(func=cmd_verify_clay)
 
-    p_apollo = sub.add_parser("source-apollo", help="Pull US L&D/CHRO leads via Apollo")
-    p_apollo.add_argument("--output", default="data/leads_raw.csv")
-    p_apollo.add_argument("--limit", type=int, default=25)
-    p_apollo.set_defaults(func=cmd_source_apollo)
-
-    p_clay = sub.add_parser("push-clay", help="Push CSV rows into Clay webhook table")
+    p_clay = sub.add_parser("push-clay", help="Push rows into Clay webhook table")
     p_clay.add_argument("--input", required=True)
     p_clay.set_defaults(func=cmd_push_clay)
 
-    p_run = sub.add_parser("run", help="Full pipeline: intent → personalize → export/send")
-    p_run.add_argument("--input", help="CSV from Clay/Apollo (optional)")
-    p_run.add_argument("--output", default="data/leads_qualified.csv")
-    p_run.add_argument("--limit", type=int, default=25)
-    p_run.add_argument("--live", action="store_true", help="Use real LLM (not mock)")
-    p_run.add_argument("--send", action="store_true", help="Push to Instantly (requires --live)")
-    p_run.set_defaults(func=cmd_run)
+    p_filter = sub.add_parser("filter", help="Clay export -> warm leads + Cursor draft queue")
+    p_filter.add_argument("--input", required=True, help="Clay CSV export")
+    p_filter.add_argument("--output", default="data/to_draft.csv")
+    p_filter.add_argument("--cursor", default="data/cursor_draft_queue.md")
+    p_filter.set_defaults(func=cmd_filter)
+
+    p_send = sub.add_parser("send", help="Drafted CSV -> Instantly")
+    p_send.add_argument("--input", required=True, help="CSV with email, subject, body filled")
+    p_send.add_argument("--output", default="data/sent_log.csv")
+    p_send.set_defaults(func=cmd_send)
 
     args = parser.parse_args()
     try:
